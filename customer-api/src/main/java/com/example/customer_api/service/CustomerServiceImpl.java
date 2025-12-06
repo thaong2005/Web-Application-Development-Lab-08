@@ -3,12 +3,18 @@ package com.example.customer_api.service;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.example.customer_api.dto.CustomerRequestDTO;
 import com.example.customer_api.dto.CustomerResponseDTO;
+import com.example.customer_api.dto.CustomerUpdateDTO;
 import com.example.customer_api.entity.Customer;
+import com.example.customer_api.entity.CustomerStatus;
 import com.example.customer_api.exception.DuplicateResourceException;
 import com.example.customer_api.exception.ResourceNotFoundException;
 import com.example.customer_api.repository.CustomerRepository;
@@ -26,6 +32,20 @@ public class CustomerServiceImpl implements CustomerService {
     @Override
     public List<CustomerResponseDTO> getAllCustomers() {
         return customerRepository.findAll()
+                .stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
+    }
+    
+    @Override
+    public Page<CustomerResponseDTO> getAllCustomers(Pageable pageable) {
+        return customerRepository.findAll(pageable)
+                .map(this::convertToResponseDTO);
+    }
+    
+    @Override
+    public List<CustomerResponseDTO> getAllCustomers(Sort sort) {
+        return customerRepository.findAll(sort)
                 .stream()
                 .map(this::convertToResponseDTO)
                 .collect(Collectors.toList());
@@ -83,6 +103,37 @@ public class CustomerServiceImpl implements CustomerService {
     }
     
     @Override
+    public CustomerResponseDTO partialUpdateCustomer(Long id, CustomerUpdateDTO updateDTO) {
+        Customer existingCustomer = customerRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Customer not found with id: " + id));
+        
+        // Only update non-null fields
+        if (updateDTO.getFullName() != null) {
+            existingCustomer.setFullName(updateDTO.getFullName());
+        }
+        
+        if (updateDTO.getEmail() != null) {
+            // Check if email is being changed to an existing one
+            if (!existingCustomer.getEmail().equals(updateDTO.getEmail()) 
+                && customerRepository.existsByEmail(updateDTO.getEmail())) {
+                throw new DuplicateResourceException("Email already exists: " + updateDTO.getEmail());
+            }
+            existingCustomer.setEmail(updateDTO.getEmail());
+        }
+        
+        if (updateDTO.getPhone() != null) {
+            existingCustomer.setPhone(updateDTO.getPhone());
+        }
+        
+        if (updateDTO.getAddress() != null) {
+            existingCustomer.setAddress(updateDTO.getAddress());
+        }
+        
+        Customer updatedCustomer = customerRepository.save(existingCustomer);
+        return convertToResponseDTO(updatedCustomer);
+    }
+    
+    @Override
     public void deleteCustomer(Long id) {
         if (!customerRepository.existsById(id)) {
             throw new ResourceNotFoundException("Customer not found with id: " + id);
@@ -99,8 +150,16 @@ public class CustomerServiceImpl implements CustomerService {
     }
     
     @Override
-    public List<CustomerResponseDTO> getCustomersByStatus(String status) {
+    public List<CustomerResponseDTO> getCustomersByStatus(CustomerStatus status) {
         return customerRepository.findByStatus(status)
+                .stream()
+                .map(this::convertToResponseDTO)
+                .collect(Collectors.toList());
+    }
+    
+    @Override
+    public List<CustomerResponseDTO> advancedSearch(String name, String email, String status) {
+        return customerRepository.advancedSearch(name, email, status)
                 .stream()
                 .map(this::convertToResponseDTO)
                 .collect(Collectors.toList());
